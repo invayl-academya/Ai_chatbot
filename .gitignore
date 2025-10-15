@@ -1,0 +1,40 @@
+# --- Python / FastAPI ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+venv/
+env/
+appvenv/
+
+# --- Env & config secrets ---
+.env
+*.env
+.env.*    # .env.dev, .env.prod, etc.
+
+# --- Local data / DB ---
+*.sqlite
+*.sqlite3
+test.db
+
+# --- Tooling & caches ---
+.pytest_cache/
+.mypy_cache/
+coverage.xml
+htmlcov/
+.cache/
+
+# --- Editors ---
+.vscode/
+.idea/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+logs/
+*.log

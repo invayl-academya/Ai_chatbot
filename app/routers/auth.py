@@ -1,9 +1,11 @@
 # backend/app/routers/auth.py
+from datetime import timedelta, datetime, timezone
 from typing import Annotated, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
-
+from fastapi.security import   OAuth2PasswordRequestForm , OAuth2PasswordBearer
+from jose import jwt, JWTError
 
 from ..database import get_db
 from ..models import Users  # <-- singular, must match models.py
@@ -13,9 +15,11 @@ from passlib.context import  CryptContext
 
 authRoutes = APIRouter(prefix="/auth", tags=["auth"])
 
+JWT_SECRET  = "efg983r639yr5sd8e5eljkf78e0trubsaet4er34terg4t4f3r3r4g4r3r45gfer4t325t"
+ALGORITHM = 'HS256'
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
 db_link = Annotated[Session, Depends(get_db)]
-
-
 
 
 bcrypt_context = CryptContext(schemes=['bcrypt'] , deprecated='auto')
@@ -44,6 +48,15 @@ class UserOut(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    id: int
+    name: Optional[str]
+    email: EmailStr
+    username: Optional[str]
+    role: str
 
 @authRoutes.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserRequest, db: db_link):
@@ -94,12 +107,50 @@ def list_users(
     return users
 
 
+def create_access_token(email :EmailStr , user_id :int , expires_delta :Optional[timedelta] = None) :
+    to_encode = {"sub" : email , "uid" :user_id}
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp" :expire  })
+    return  jwt.encode( to_encode , JWT_SECRET , algorithm=ALGORITHM)
+
+
+def get_current_user  ( token :Annotated[str , Depends(oauth2_bearer) ] , db:db_link) :
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        user_id = payload.get("uid")
+        if not email or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authorized: missing claims",
+            )
+        user = db.query(Users).get(user_id)  # or filter by email if you prefer
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt_context.verify(plain, hashed)
 
-@authRoutes.post("/login")
+@authRoutes.post("/login" , response_model=TokenResponse)
 def login(payload: LoginRequest, db: db_link):
     user = db.query(Users).filter(Users.email == payload.email.lower().strip()).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"ok": True, "user_id": user.id}
+    token = create_access_token(email=user.email, user_id=user.id)
+    return TokenResponse(
+            access_token=token,
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            username=user.username,
+            role=user.role,
+        )
+
+@authRoutes.get("/me", response_model=UserOut)
+def read_me(current_user: Annotated[Users, Depends(get_current_user)]):
+    return current_user

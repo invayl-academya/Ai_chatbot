@@ -25,3 +25,12 @@ class ChatMessage(Base):
     owner_id = Column(Integer , ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id = Column(String(64), primary_key=True)        # same id you generate
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    title = Column(String(200), nullable=True)       # first user msg summary or custom
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

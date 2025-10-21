@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, get_db
 from .models import Base, ChatMessage
@@ -15,14 +15,16 @@ Base.metadata.create_all(bind=engine) #create tables
 app.include_router(auth.authRoutes)
 app.include_router(chats.router)
 
+
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # add your prod domain later
+    allow_origins=["http://localhost:5173"],  # or "http://127.0.0.1:5173" if you use that everywhere
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 

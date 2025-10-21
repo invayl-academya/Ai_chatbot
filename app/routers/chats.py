@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from uuid import uuid4
 
 from ..clients import get_openai
-from ..models import ChatMessage
+from ..models import ChatMessage, Users , ChatSession
 from ..database import   get_db
 from .auth import  get_current_user
 
@@ -48,7 +48,7 @@ def save_message(
     return msg
 
 chat_db = Annotated[Session , Depends(get_db)]
-current_login_user = Annotated["Users", Depends(get_current_user)]
+current_login_user = Annotated[Users, Depends(get_current_user)]  # ✅
 
 
 
@@ -58,7 +58,7 @@ def list_qa_pairs(
     pair_limit: int = Query(default=50, ge=1, le=500),
     pair_offset: int = Query(default=0, ge=0),
     db: chat_db = None,
-    current_user = current_login_user
+    current_user : current_login_user = None
 ):
     """
     GET /chat/all
@@ -121,41 +121,31 @@ def list_qa_pairs(
 
 @router.get("/all")
 def list_chats(
-    session_id: Optional[str] = Query(default=None, max_length=64, description="Filter by session/thread id"),
-    role: Optional[str] = Query(default=None, description='Filter by role: "user" or "assistant"'),
+    session_id: Optional[str] = Query(default=None, max_length=64),
+    role: Optional[str] = Query(default=None),
+    owner: str = Query(default="me", pattern="^(me|all)$"),  # NEW
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: chat_db = None,
-current_user: Annotated["Users", Depends(get_current_user)] = None,
+    current_user: current_login_user = None,  # 👈 IMPORTANT: annotation so Depends works
 ):
-    """
-    GET /chat/chats
-    - Returns chat messages (optionally filtered by session_id and/or role)
-    - Supports pagination via limit/offset
-    - Ordered newest first
-    """
     q = db.query(ChatMessage)
+
+    # scope by owner
+    if (current_user.role != "admin") or (owner == "me"):
+        q = q.filter(ChatMessage.owner_id == current_user.id)
+
     if session_id:
         q = q.filter(ChatMessage.session_id == session_id)
     if role in ("user", "assistant"):
         q = q.filter(ChatMessage.role == role)
 
     total = q.count()
-    items: List[ChatMessage] = (
+    items = (
         q.order_by(desc(ChatMessage.created_at), desc(ChatMessage.id))
-         .offset(offset)
-         .limit(limit)
-         .all()
+         .offset(offset).limit(limit).all()
     )
-
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": items,  # FastAPI will serialize ORM objects
-    }
-
-
+    return {"total": total, "limit": limit, "offset": offset, "items": items}
 
 
 @router.post("/")

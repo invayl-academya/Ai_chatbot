@@ -1,7 +1,7 @@
 # backend/app/routers/auth.py
 from datetime import timedelta, datetime, timezone
 from typing import Annotated, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query , Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 from fastapi.security import   OAuth2PasswordRequestForm , OAuth2PasswordBearer
@@ -137,11 +137,24 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt_context.verify(plain, hashed)
 
 @authRoutes.post("/login" , response_model=TokenResponse)
-def login(payload: LoginRequest, db: db_link):
+async def login(payload: LoginRequest, db: db_link , response :Response):
     user = db.query(Users).filter(Users.email == payload.email.lower().strip()).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token(email=user.email, user_id=user.id)
+
+    # DEV: localhost can use secure=False and samesite="lax"
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        max_age=60 * 60,      # 1 hour
+        expires=60 * 60,
+        samesite="lax",       # use "none" + secure=True when on HTTPS cross-site
+        secure=False,         # set True in production (HTTPS)
+    )
+
+
     return TokenResponse(
             access_token=token,
             id=user.id,
@@ -154,3 +167,4 @@ def login(payload: LoginRequest, db: db_link):
 @authRoutes.get("/me", response_model=UserOut)
 def read_me(current_user: Annotated[Users, Depends(get_current_user)]):
     return current_user
+    
